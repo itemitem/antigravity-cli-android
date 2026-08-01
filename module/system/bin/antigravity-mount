@@ -1,0 +1,26 @@
+#!/system/bin/sh
+# Re-bind the CLI pool onto /system/bin/.antigravity-pool without rebooting.
+
+POOL=/data/adb/antigravity
+MNT=/system/bin/.antigravity-pool
+
+[ "$(id -u)" = 0 ] || { echo "antigravity-mount: harus root" >&2; exit 1; }
+
+mkdir -p "$POOL"
+chmod 755 "$POOL"
+chcon -R u:object_r:system_file:s0 "$POOL" 2>/dev/null
+
+if [ ! -d "$MNT" ]; then
+    echo "antigravity-mount: $MNT tidak ada -- modul belum ter-magic-mount." >&2
+    echo "              Itu hanya terpasang saat boot, jadi reboot sekali dulu." >&2
+    exit 1
+fi
+
+if grep -q " $MNT " /proc/self/mountinfo 2>/dev/null; then
+    echo "antigravity-mount: sudah ter-mount"
+else
+    mount -o bind "$POOL" "$MNT" || { echo "antigravity-mount: bind gagal" >&2; exit 1; }
+    echo "antigravity-mount: $POOL -> $MNT"
+fi
+
+ls -1 "$MNT" 2>/dev/null | sed 's/^/  /'

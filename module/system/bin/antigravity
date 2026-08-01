@@ -1,0 +1,52 @@
+#!/system/bin/sh
+# Antigravity CLI (agy) launcher -- one entry point for every caller on the device:
+# root shells, adb, Termux, and any other app.
+#
+# The `agy` binary is a Go standalone binary from Google DeepMind. Unlike Claude
+# Code (musl binary needing a loader), Go binaries are statically linked and
+# run directly on Android arm64 without any loader or interpreter tricks.
+
+POOL=/system/bin/.antigravity-pool
+[ -e "$POOL/agy" ] || POOL=/data/adb/antigravity
+
+# termux-exec exports LD_PRELOAD pointing at a bionic .so. Go binaries don't
+# use it, but unset anyway to be safe.
+unset LD_PRELOAD
+
+# Android has no /tmp. Point TMPDIR somewhere writable.
+if [ -z "$TMPDIR" ] || ! mkdir -p "$TMPDIR" 2>/dev/null; then
+    TMPDIR=""
+    for c in "${PREFIX:+$PREFIX/tmp}" "${HOME:+$HOME/.cache/antigravity}" /data/local/tmp/antigravity; do
+        [ -n "$c" ] || continue
+        if mkdir -p "$c" 2>/dev/null && [ -w "$c" ]; then TMPDIR="$c"; break; fi
+    done
+fi
+[ -n "$TMPDIR" ] && export TMPDIR
+
+# HOME fallback: Android doesn't always set HOME for all callers
+if [ -z "$HOME" ] || ! mkdir -p "$HOME" 2>/dev/null; then
+    for h in /data/local/tmp /data/adb/antigravity/home; do
+        if mkdir -p "$h" 2>/dev/null && [ -w "$h" ]; then HOME="$h"; break; fi
+    done
+    export HOME
+fi
+
+REAL="$POOL/agy"
+
+if [ ! -e "$REAL" ]; then
+    echo "antigravity: $REAL tidak ada." >&2
+    if [ ! -d "$POOL" ] || [ "$POOL" = /data/adb/antigravity ]; then
+        echo "        Pool belum ter-mount di /system/bin/.antigravity-pool." >&2
+        echo "        Reboot sekali, atau jalankan sebagai root: antigravity-mount" >&2
+    fi
+    echo "        Pasang CLI dengan: antigravity-update" >&2
+    exit 127
+fi
+
+if [ ! -r /etc/resolv.conf ]; then
+    echo "antigravity: /etc/resolv.conf tidak terbaca -- DNS mungkin gagal." >&2
+    echo "        Reboot supaya modul memasangnya." >&2
+fi
+
+# Go binary -- exec directly, no loader needed
+exec "$REAL" "$@"

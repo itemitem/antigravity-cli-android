@@ -1,0 +1,67 @@
+#!/system/bin/sh
+# Pastikan domain Google Antigravity tidak diblokir adblocker berbasis hosts.
+
+HOSTS=${HOSTS:-/etc/hosts}
+
+DOMAINS="
+antigravity.google
+antigravity-cli-auto-updater-974169037036.us-central1.run.app
+storage.googleapis.com
+generativelanguage.googleapis.com
+accounts.google.com
+oauth2.googleapis.com
+"
+
+is_blocked() {
+    esc=$(echo "$1" | sed 's/\./\\./g')
+    grep -qiE "^[[:space:]]*(0\.0\.0\.0|127\.0\.0\.1|::1?)[[:space:]]+$esc([[:space:]#]|\$)" "$HOSTS" 2>/dev/null
+}
+
+blocked=""
+for d in $DOMAINS; do
+    is_blocked "$d" && blocked="$blocked $d"
+done
+
+if [ -z "$blocked" ]; then
+    echo "antigravity-whitelist: semua domain Google Antigravity sudah lolos"
+    exit 0
+fi
+echo "antigravity-whitelist: diblokir ->$blocked"
+
+# --- Re-Malwack ---------------------------------------------------------------
+RM=/data/adb/modules/Re-Malwack/rmlwk.sh
+if [ -f "$RM" ]; then
+    for w in "antigravity.google" "*.google.com" "accounts.google.com"; do
+        TERM=xterm sh "$RM" --whitelist add "$w" --quiet >/dev/null 2>&1
+    done
+    echo "antigravity-whitelist: Re-Malwack whitelist +antigravity.google (regen hosts)"
+    exit 0
+fi
+
+# --- AdAway / modul hosts generik --------------------------------------------
+patched=0
+for src in /data/adb/modules/*/system/etc/hosts; do
+    [ -f "$src" ] || continue
+    hit=0
+    for d in $blocked; do
+        esc=$(echo "$d" | sed 's/\./\\./g')
+        grep -qiE "^[[:space:]]*(0\.0\.0\.0|127\.0\.0\.1|::1?)[[:space:]]+$esc([[:space:]#]|\$)" "$src" && hit=1
+    done
+    [ "$hit" = 1 ] || continue
+    cp "$src" "$src.antigravity-bak" 2>/dev/null
+    for d in $blocked; do
+        esc=$(echo "$d" | sed 's/\./\\./g')
+        sed -i -E "/^[[:space:]]*(0\.0\.0\.0|127\.0\.0\.1|::1?)[[:space:]]+$esc([[:space:]#]|\$)/d" "$src" 2>/dev/null
+    done
+    echo "antigravity-whitelist: menghapus blokir dari $src (backup .antigravity-bak)"
+    patched=1
+done
+
+if [ "$patched" = 1 ]; then
+    echo "antigravity-whitelist: reboot supaya hosts yang sudah dibersihkan termuat."
+    exit 0
+fi
+
+echo "antigravity-whitelist: domain diblokir tapi adblocker tak dikenali." >&2
+echo "  Whitelist manual domain ini di adblocker Anda:$blocked" >&2
+exit 1

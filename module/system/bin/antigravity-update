@@ -1,0 +1,124 @@
+#!/system/bin/sh
+# Install or update the Antigravity CLI (agy) binary.
+#
+#   antigravity-update              install the latest version
+#   antigravity-update --list       show what is installed
+#
+# Must run as root: the pool lives in /data/adb.
+#
+# Downloads the Go binary directly from Google's release server.
+# No npm, no Node.js, no musl loader -- just a single static binary.
+
+POOL=/data/adb/antigravity
+MANIFEST_BASE=https://antigravity-cli-auto-updater-974169037036.us-central1.run.app
+PLATFORM=linux_arm64
+
+die() { echo "antigravity-update: $*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "harus dijalankan sebagai root (pool ada di /data/adb)"
+
+# Find a downloader
+if command -v curl >/dev/null 2>&1; then
+    fetch() { curl -fsSL "$1" -o "$2"; }
+    slurp() { curl -fsSL "$1"; }
+elif command -v wget >/dev/null 2>&1; then
+    fetch() { wget -qO "$2" "$1"; }
+    slurp() { wget -qO- "$1"; }
+elif command -v busybox >/dev/null 2>&1; then
+    fetch() { busybox wget -qO "$2" "$1"; }
+    slurp() { busybox wget -qO- "$1"; }
+else
+    die "butuh curl, wget, atau busybox untuk mengunduh"
+fi
+
+mkdir -p "$POOL" || die "tidak bisa membuat $POOL"
+
+if [ "${1:-}" = "--list" ]; then
+    echo "pool: $POOL"
+    [ -e "$POOL/agy" ] && echo "  agy  ($($POOL/agy --version 2>&1 | head -1))" || echo "  (belum terpasang)"
+    exit 0
+fi
+
+# Query the manifest for latest version and download URL
+echo "==> mencari versi terbaru"
+MANIFEST=$(slurp "$MANIFEST_BASE/manifests/$PLATFORM.json") || die "gagal mengunduh manifest"
+
+# Parse JSON without jq
+parse_json() {
+    echo "$MANIFEST" | sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+VER=$(parse_json version)
+URL=$(parse_json url)
+SHA512=$(parse_json sha512)
+
+[ -n "$VER" ] || die "gagal membaca versi dari manifest"
+[ -n "$URL" ] || die "gagal membaca URL dari manifest"
+echo "==> versi: $VER"
+
+# Check if already installed with same version
+if [ -e "$POOL/agy" ]; then
+    CUR=$("$POOL/agy" --version 2>&1 | head -1)
+    case "$CUR" in
+        *"$VER"*) echo "==> $VER sudah terpasang ($CUR)"; SKIP=1 ;;
+        *) SKIP=0 ;;
+    esac
+else
+    SKIP=0
+fi
+
+if [ "$SKIP" = 0 ]; then
+    TMP="$POOL/.dl.$$"
+    rm -rf "$TMP"; mkdir -p "$TMP" || die "tidak bisa membuat $TMP"
+    trap 'rm -rf "$TMP"' EXIT INT TERM
+
+    echo "==> mengunduh $URL"
+    fetch "$URL" "$TMP/agy.tar.gz" || die "unduhan gagal"
+
+    # Verify SHA512 checksum
+    if command -v sha512sum >/dev/null 2>&1; then
+        echo "==> memverifikasi checksum"
+        ACTUAL=$(sha512sum "$TMP/agy.tar.gz" | cut -d' ' -f1)
+        if [ "$ACTUAL" != "$SHA512" ]; then
+            die "checksum tidak cocok! File mungkin rusak atau diubah."
+        fi
+        echo "    ok: checksum cocok"
+    fi
+
+    echo "==> mengekstrak"
+    tar -xzf "$TMP/agy.tar.gz" -C "$TMP" || die "ekstraksi gagal"
+
+    # Find the binary -- could be named 'antigravity' or 'agy'
+    BIN=""
+    for name in "$TMP/antigravity" "$TMP/agy"; do
+        [ -f "$name" ] && { BIN="$name"; break; }
+    done
+    # Fallback: find any executable
+    [ -n "$BIN" ] || BIN=$(find "$TMP" -type f -size +1M 2>/dev/null | head -1)
+    [ -n "$BIN" ] || die "binary tidak ditemukan di dalam tarball"
+
+    chmod 755 "$BIN"
+
+    # Verify the binary runs
+    echo "==> memverifikasi binary"
+    GOT=$("$BIN" --version 2>&1 | head -1)
+    echo "    $GOT"
+
+    # Backup old binary
+    [ -e "$POOL/agy" ] && mv "$POOL/agy" "$POOL/agy.bak" 2>/dev/null
+
+    mv "$BIN" "$POOL/agy" || die "gagal memindahkan ke $POOL/agy"
+    chmod 755 "$POOL/agy"
+    rm -rf "$TMP"; trap - EXIT INT TERM
+fi
+
+# SELinux labels
+chcon -R u:object_r:system_file:s0 "$POOL" 2>/dev/null
+chmod 755 "$POOL"
+
+# Whitelist domains
+if command -v antigravity-whitelist >/dev/null 2>&1; then
+    antigravity-whitelist || true
+fi
+
+echo "==> selesai. Coba: antigravity --version"

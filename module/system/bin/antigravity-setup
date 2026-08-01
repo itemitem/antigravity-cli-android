@@ -1,0 +1,66 @@
+#!/system/bin/sh
+# Satu perintah untuk menuntaskan setup setelah modul di-flash + reboot.
+#
+#   antigravity-setup            pasang CLI, whitelist, link Termux
+#
+# Idempoten -- boleh dijalankan berkali-kali. Root only.
+
+[ "$(id -u)" = 0 ] || { echo "antigravity-setup: harus root" >&2; exit 1; }
+
+POOL=/data/adb/antigravity
+step() { echo; echo "==> $*"; }
+
+step "Memastikan pool ter-mount"
+if ! grep -q "antigravity-pool" /proc/self/mountinfo 2>/dev/null; then
+    antigravity-mount || echo "  (antigravity-mount gagal -- reboot sekali kalau /system/bin/.antigravity-pool belum ada)"
+fi
+
+step "Memasang / memperbarui Antigravity CLI"
+if [ -e "$POOL/agy" ]; then
+    echo "  CLI sudah ada: $($POOL/agy --version 2>&1 | head -1)"
+else
+    antigravity-update || { echo "antigravity-setup: antigravity-update gagal" >&2; exit 1; }
+fi
+
+step "Whitelist adblocker (kalau ada)"
+antigravity-whitelist || true
+
+step "Integrasi Termux"
+TP=/data/data/com.termux/files/usr
+if [ -d "$TP" ]; then
+    link="$TP/bin/antigravity"
+    agy_link="$TP/bin/agy"
+    if [ -e "$link" ] && [ ! -L "$link" ]; then
+        echo "  ADA $link (bukan symlink kami) -- dibiarkan."
+    else
+        if [ -L "$link" ] && [ "$(readlink "$link")" = /system/bin/antigravity ]; then
+            echo "  symlink Termux sudah ada"
+        else
+            TUID=$(stat -c %u "$TP/bin" 2>/dev/null || echo 0)
+            ln -sfn /system/bin/antigravity "$link"
+            ln -sfn /system/bin/antigravity "$agy_link"
+            [ "$TUID" != 0 ] && chown -h "$TUID:$TUID" "$link" "$agy_link" 2>/dev/null
+            echo "  symlink dibuat: $link -> /system/bin/antigravity"
+            echo "  symlink dibuat: $agy_link -> /system/bin/antigravity"
+        fi
+
+        CTX=$(ls -ldZ "$TP/bin" 2>/dev/null | tr ' ' '\n' | grep -m1 '^u:object_r:')
+        if [ -n "$CTX" ]; then
+            chcon -h "$CTX" "$link" "$agy_link" 2>/dev/null && echo "  label: $CTX"
+        fi
+    fi
+else
+    echo "  Termux tidak terpasang -- dilewati"
+fi
+
+step "Verifikasi"
+V=$(antigravity --version 2>&1 | head -1)
+echo "  antigravity --version: $V"
+if [ -r /etc/resolv.conf ]; then
+    echo "  /etc/resolv.conf: ok"
+else
+    echo "  /etc/resolv.conf: BELUM ADA -- reboot supaya modul memasangnya"
+fi
+
+echo
+echo "Selesai. Jalankan:  antigravity  atau  agy"
