@@ -20,19 +20,49 @@ TP=/data/data/com.termux/files/usr
 TUID=$(stat -c %u "$TP/bin" 2>/dev/null || echo 0)
 CTX=$(ls -ldZ "$TP/bin" 2>/dev/null | tr ' ' '\n' | grep -m1 '^u:object_r:')
 
+# Bump this whenever the wrapper body below changes, so write_wrapper's
+# self-heal check knows an installed wrapper is stale and needs rewriting
+# (plain content-sniffing broke once the body stopped containing a plain
+# expanded path -- see the su -c quoting note in the wrapper itself).
+WRAPPER_VERSION=2
+
 write_wrapper() {
     f="$1"
     if [ -e "$f" ] && [ ! -f "$f" ]; then
         echo "antigravity-link-termux: $f ada tapi bukan file biasa -- dilewati" >&2
         return 0
     fi
-    if [ -f "$f" ] && grep -q "$MODDIR/bin/antigravity" "$f" 2>/dev/null; then
+    if [ -f "$f" ] && grep -q "wrapper-version: $WRAPPER_VERSION\$" "$f" 2>/dev/null; then
         return 0
     fi
-    cat > "$f" <<EOF
-#!$TP/bin/sh
-exec su -c '$MODDIR/bin/antigravity "\$@"' -- "\$@"
-EOF
+    cat > "$f" <<'WRAPEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+# wrapper-version: 2
+#
+# A leading 1-5 picks an isolated account profile (own HOME under
+# /data/adb/antigravity/profiles/<n>), so several Google accounts can stay
+# logged in side by side instead of one login overwriting the next. No
+# leading digit -> default profile, same as before.
+#
+# This device's su -c does NOT pass "-- args" through as real positional
+# parameters to the -c command -- it just concatenates them as literal text
+# onto the command string and re-shells it. That both breaks argument
+# boundaries (a value with a space becomes two args) and allows shell
+# injection (a value containing ';' runs as a second command) if passed
+# naively. So build one fully single-quoted command string ourselves and
+# give su -c nothing else to concatenate.
+MODDIR=/data/adb/modules/antigravity-cli
+case "$1" in
+    1|2|3|4|5) prog="$MODDIR/bin/antigravity-profile" ;;
+    *)         prog="$MODDIR/bin/antigravity" ;;
+esac
+cmd="'$prog'"
+for a in "$@"; do
+    esc=$(printf '%s' "$a" | sed "s/'/'\\\\''/g")
+    cmd="$cmd '$esc'"
+done
+exec su -c "$cmd"
+WRAPEOF
     chmod 755 "$f"
     [ "$TUID" != 0 ] && chown "$TUID:$TUID" "$f" 2>/dev/null
     [ -n "$CTX" ] && chcon "$CTX" "$f" 2>/dev/null

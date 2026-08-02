@@ -1,0 +1,17 @@
+#!/system/bin/sh
+# Run the antigravity launcher with HOME pointed at a numbered, isolated
+# profile directory, so several Google accounts (each with their own
+# login/settings/history under $HOME/.gemini/...) can be kept side by side
+# instead of one login clobbering the next.
+#
+# Usage: antigravity-profile <1-5> [agy args...]
+
+MODDIR=/data/adb/modules/antigravity-cli
+
+p="$1"
+shift
+
+export HOME="/data/adb/antigravity/profiles/$p"
+mkdir -p "$HOME"
+
+exec "$MODDIR/bin/antigravity" "$@"
