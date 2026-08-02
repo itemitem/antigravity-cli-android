@@ -50,10 +50,11 @@ su -c antigravity-setup  # jalankan ulang setup (idempoten)
 
 ## Cara kerja
 
-Antigravity CLI adalah binary **Go** standalone buatan Google DeepMind (`agy`). Binary ini bersifat statically linked sehingga dapat berjalan langsung di Android arm64 tanpa memerlukan glibc, musl loader, atau Node.js.
+Antigravity CLI adalah binary **Go** buatan Google (`agy`) -- tapi build-nya cgo-enabled, jadi dinamis terhadap glibc (butuh `ld-linux-aarch64.so.1` + `libc`/`libpthread`/`libdl`/`librt`/`libresolv`/`libm`), bukan statically linked. Bionic (libc Android) tidak menyediakan itu, jadi binary ini tidak bisa langsung di-exec di Android seperti binary Go pada umumnya.
 
 Modul ini:
 1. Mengunduh binary `linux_arm64` resmi dari server rilis Google (`antigravity-cli-auto-updater-974169037036.us-central1.run.app`)
 2. Memverifikasi integritas file dengan SHA512 checksum yang ada pada manifest Google
 3. Memaparkan binary lewat bind mount `/data/adb/antigravity` → `/system/bin/.antigravity-pool`
-4. Menyediakan perintah `antigravity` dan `agy` yang dapat dipanggil dari seluruh sistem
+4. Menjalankan `agy` lewat loader glibc yang di-bundle di `system/bin/.antigravity-loader/` (diambil dari paket `libc6` Debian 12 arm64), dengan trik yang sama seperti loader musl di modul `claude-code`
+5. Menyediakan perintah `antigravity` dan `agy` yang dapat dipanggil dari seluruh sistem

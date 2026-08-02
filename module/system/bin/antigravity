@@ -2,12 +2,16 @@
 # Antigravity CLI (agy) launcher -- one entry point for every caller on the device:
 # root shells, adb, Termux, and any other app.
 #
-# The `agy` binary is a Go standalone binary from Google DeepMind. Unlike Claude
-# Code (musl binary needing a loader), Go binaries are statically linked and
-# run directly on Android arm64 without any loader or interpreter tricks.
+# The `agy` binary is a Go binary from Google, but it's cgo-enabled (linked
+# against glibc for DNS/resolver + threading, not statically linked like a
+# plain Go build). Bionic has no glibc dynamic linker, so it must run through
+# a bundled one -- same idea as the claude-code module's musl loader.
 
 POOL=/system/bin/.antigravity-pool
 [ -e "$POOL/agy" ] || POOL=/data/adb/antigravity
+
+LOADER=/system/bin/.antigravity-loader
+[ -e "$LOADER/ld-linux-aarch64.so.1" ] || LOADER=/data/adb/modules/antigravity-cli/system/bin/.antigravity-loader
 
 # termux-exec exports LD_PRELOAD pointing at a bionic .so. Go binaries don't
 # use it, but unset anyway to be safe.
@@ -48,5 +52,10 @@ if [ ! -r /etc/resolv.conf ]; then
     echo "        Reboot supaya modul memasangnya." >&2
 fi
 
-# Go binary -- exec directly, no loader needed
-exec "$REAL" "$@"
+if [ ! -e "$LOADER/ld-linux-aarch64.so.1" ]; then
+    echo "antigravity: loader glibc tidak ditemukan di $LOADER" >&2
+    echo "        Modul rusak atau belum ter-magic-mount -- reboot sekali." >&2
+    exit 127
+fi
+
+exec "$LOADER/ld-linux-aarch64.so.1" --library-path "$LOADER" "$REAL" "$@"
