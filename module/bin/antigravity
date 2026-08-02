@@ -19,6 +19,20 @@ LOADER="$MODDIR/loader"
 # use it, but unset anyway to be safe.
 unset LD_PRELOAD
 
+# Go's x509 verifier looks for a CA bundle at FHS paths that don't exist on
+# Android (no /etc/ssl/certs). Without SSL_CERT_FILE every HTTPS call --
+# OAuth token exchange, token refresh, the Gemini API itself -- fails with
+# "x509: certificate signed by unknown authority". Termux's ca-certificates
+# package ships a good bundle; point at it unless the caller already set one.
+if [ -z "$SSL_CERT_FILE" ]; then
+    for c in "${PREFIX:+$PREFIX/etc/tls/cert.pem}" /data/data/com.termux/files/usr/etc/tls/cert.pem \
+             /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt; do
+        [ -n "$c" ] || continue
+        if [ -r "$c" ]; then SSL_CERT_FILE="$c"; break; fi
+    done
+    [ -n "$SSL_CERT_FILE" ] && export SSL_CERT_FILE
+fi
+
 # Android has no /tmp. Point TMPDIR somewhere writable.
 if [ -z "$TMPDIR" ] || ! mkdir -p "$TMPDIR" 2>/dev/null || [ ! -w "$TMPDIR" ]; then
     TMPDIR=""
