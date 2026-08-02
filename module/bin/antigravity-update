@@ -99,17 +99,21 @@ if [ "$SKIP" = 0 ]; then
 
     chmod 755 "$BIN"
 
-    # Verify the binary runs
-    echo "==> memverifikasi binary"
-    GOT=$("$BIN" --version 2>&1 | head -1)
-    echo "    $GOT"
-
     # Backup old binary
     [ -e "$POOL/agy" ] && mv "$POOL/agy" "$POOL/agy.bak" 2>/dev/null
 
     mv "$BIN" "$POOL/agy" || die "gagal memindahkan ke $POOL/agy"
     chmod 755 "$POOL/agy"
     rm -rf "$TMP"; trap - EXIT INT TERM
+
+    # Verify the binary runs -- it's glibc-linked (cgo), so it must go
+    # through the bundled loader, never exec'd directly on bionic.
+    echo "==> memverifikasi binary"
+    LOADER=/data/adb/modules/antigravity-cli/loader
+    if [ -e "$LOADER/ld-linux-aarch64.so.1" ]; then
+        GOT=$("$LOADER/ld-linux-aarch64.so.1" --library-path "$LOADER" "$POOL/agy" --version 2>&1 | head -1)
+        echo "    $GOT"
+    fi
 fi
 
 chmod 755 "$POOL"

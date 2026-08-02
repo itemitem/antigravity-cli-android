@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.1 — 2026-08-02
+
+### Perbaikan
+
+- **`antigravity-update` selalu error "No such file or directory" di langkah verifikasi binary**, meski instalasinya tetap berhasil (harmless, tidak `die`, jadi tidak ketahuan sampai diuji langsung di device): langkah itu meng-exec binary hasil unduhan (`$BIN --version`) langsung di bionic sebelum dipindah ke pool, padahal binary itu glibc-linked (cgo) dan harus lewat loader yang dibundel -- persis bug yang sama seperti kenapa `antigravity`/`agy` sendiri butuh loader. Fix: verifikasi dilakukan setelah binary dipindah ke `$POOL/agy`, lewat loader glibc, sama seperti launcher `antigravity`. Ditemukan & diperbaiki saat uji-pasang end-to-end modul v1.2.0 di device.
+
 ## v1.2.0 — 2026-08-02
 
 ### Perubahan besar: modul tanpa mount
