@@ -33,6 +33,20 @@ if [ -z "$SSL_CERT_FILE" ]; then
     [ -n "$SSL_CERT_FILE" ] && export SSL_CERT_FILE
 fi
 
+# agy's own shell-command tool execs "bash" directly. `su` resets PATH to a
+# bare root/system one (/system/bin, /sbin, ...) with no Termux dir at all,
+# so that exec fails with "bash: executable file not found in $PATH" even
+# though Termux's bash is right there. Make sure Termux's bin dir is on PATH
+# regardless of caller, without clobbering whatever PATH already has.
+for b in "${PREFIX:+$PREFIX/bin}" /data/data/com.termux/files/usr/bin; do
+    [ -n "$b" ] || continue
+    case ":$PATH:" in
+        *":$b:"*) ;;
+        *) [ -d "$b" ] && PATH="$b:$PATH" ;;
+    esac
+done
+export PATH
+
 # Android has no /tmp. Point TMPDIR somewhere writable.
 if [ -z "$TMPDIR" ] || ! mkdir -p "$TMPDIR" 2>/dev/null || [ ! -w "$TMPDIR" ]; then
     TMPDIR=""
