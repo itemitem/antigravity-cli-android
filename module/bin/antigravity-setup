@@ -1,0 +1,39 @@
+#!/system/bin/sh
+# Satu perintah untuk menuntaskan setup setelah modul di-flash.
+#
+#   antigravity-setup            pasang CLI, whitelist, link Termux
+#
+# Idempoten -- boleh dijalankan berkali-kali. Root only. Tidak butuh reboot:
+# modul ini tidak memasang apa pun ke /system, jadi tidak ada langkah yang
+# menunggu magic-mount.
+
+[ "$(id -u)" = 0 ] || { echo "antigravity-setup: harus root" >&2; exit 1; }
+
+MODDIR=/data/adb/modules/antigravity-cli
+POOL=/data/adb/antigravity
+step() { echo; echo "==> $*"; }
+
+step "Memasang / memperbarui Antigravity CLI"
+if [ -e "$POOL/agy" ]; then
+    echo "  CLI sudah ada: $($POOL/agy --version 2>&1 | head -1)"
+else
+    "$MODDIR/bin/antigravity-update" || { echo "antigravity-setup: antigravity-update gagal" >&2; exit 1; }
+fi
+
+step "Whitelist adblocker (kalau ada)"
+"$MODDIR/bin/antigravity-whitelist" || true
+
+step "Integrasi Termux"
+if [ -d /data/data/com.termux/files/usr ]; then
+    "$MODDIR/bin/antigravity-link-termux"
+    echo "  antigravity / agy -- siap di PATH Termux (su -c wrapper)"
+else
+    echo "  Termux tidak terpasang -- dilewati"
+fi
+
+step "Verifikasi"
+V=$("$MODDIR/bin/antigravity" --version 2>&1 | head -1)
+echo "  antigravity --version: $V"
+
+echo
+echo "Selesai. Jalankan:  antigravity  atau  agy"

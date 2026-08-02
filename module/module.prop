@@ -1,7 +1,7 @@
 id=antigravity-cli
 name=Antigravity CLI
-version=v1.1.0
-versionCode=2
+version=v1.2.0
+versionCode=3
 author=itemitem
-description=Menjalankan Google Antigravity CLI (agy) di Android tanpa Termux. Binary Go arm64 (cgo/glibc) langsung dari Google, self-updating, dengan loader glibc bundled. Butuh arm64 + root.
+description=Menjalankan Google Antigravity CLI (agy) di Android tanpa Termux. Binary Go arm64 (cgo/glibc) langsung dari Google, self-updating, loader glibc bundled. Tidak memasang apa pun ke /system (no magic-mount) -- aman dari bootloop mount planner device tertentu. Butuh arm64 + root.
 updateJson=https://raw.githubusercontent.com/itemitem/antigravity-cli-android/main/update.json

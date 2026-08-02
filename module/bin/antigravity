@@ -1,17 +1,19 @@
 #!/system/bin/sh
-# Antigravity CLI (agy) launcher -- one entry point for every caller on the device:
-# root shells, adb, Termux, and any other app.
+# Antigravity CLI (agy) launcher -- one entry point for every caller on the
+# device: root shells, adb, and Termux (via the wrapper service.sh installs).
 #
 # The `agy` binary is a Go binary from Google, but it's cgo-enabled (linked
 # against glibc for DNS/resolver + threading, not statically linked like a
 # plain Go build). Bionic has no glibc dynamic linker, so it must run through
 # a bundled one -- same idea as the claude-code module's musl loader.
+#
+# This module ships no /system overlay at all (see README "Cara kerja"), so
+# both the pool and the loader always live at fixed, non-mounted paths --
+# no "mounted vs. fallback" branching needed anymore.
 
-POOL=/system/bin/.antigravity-pool
-[ -e "$POOL/agy" ] || POOL=/data/adb/antigravity
-
-LOADER=/system/bin/.antigravity-loader
-[ -e "$LOADER/ld-linux-aarch64.so.1" ] || LOADER=/data/adb/modules/antigravity-cli/system/bin/.antigravity-loader
+MODDIR=/data/adb/modules/antigravity-cli
+POOL=/data/adb/antigravity
+LOADER="$MODDIR/loader"
 
 # termux-exec exports LD_PRELOAD pointing at a bionic .so. Go binaries don't
 # use it, but unset anyway to be safe.
@@ -41,22 +43,13 @@ REAL="$POOL/agy"
 
 if [ ! -e "$REAL" ]; then
     echo "antigravity: $REAL tidak ada." >&2
-    if [ ! -d "$POOL" ] || [ "$POOL" = /data/adb/antigravity ]; then
-        echo "        Pool belum ter-mount di /system/bin/.antigravity-pool." >&2
-        echo "        Reboot sekali, atau jalankan sebagai root: antigravity-mount" >&2
-    fi
-    echo "        Pasang CLI dengan: antigravity-update" >&2
+    echo "        Pasang CLI dengan: su -c antigravity-update" >&2
     exit 127
-fi
-
-if [ ! -r /etc/resolv.conf ]; then
-    echo "antigravity: /etc/resolv.conf tidak terbaca -- DNS mungkin gagal." >&2
-    echo "        Reboot supaya modul memasangnya." >&2
 fi
 
 if [ ! -e "$LOADER/ld-linux-aarch64.so.1" ]; then
     echo "antigravity: loader glibc tidak ditemukan di $LOADER" >&2
-    echo "        Modul rusak atau belum ter-magic-mount -- reboot sekali." >&2
+    echo "        Modul rusak atau belum terpasang -- flash ulang zip modul." >&2
     exit 127
 fi
 

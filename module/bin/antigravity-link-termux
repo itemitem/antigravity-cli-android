@@ -1,0 +1,42 @@
+#!/system/bin/sh
+# Write/refresh the Termux-side wrapper for `antigravity` / `agy`.
+#
+# This module ships no /system overlay, so there is no magic-mounted path
+# already on Termux's PATH the way a system/bin merge would give -- instead
+# we drop a small script directly into Termux's own bin dir that crosses the
+# privilege boundary itself (su -c). Called both from antigravity-setup
+# (manual, prints progress) and service.sh (silent, every boot -- so the
+# wrapper self-heals if Termux's data ever gets wiped/reinstalled without a
+# module reflash).
+#
+# Root only (needs to write into another app's data dir).
+
+[ "$(id -u)" = 0 ] || { echo "antigravity-link-termux: harus root" >&2; exit 1; }
+
+MODDIR=/data/adb/modules/antigravity-cli
+TP=/data/data/com.termux/files/usr
+[ -d "$TP" ] || exit 0
+
+TUID=$(stat -c %u "$TP/bin" 2>/dev/null || echo 0)
+CTX=$(ls -ldZ "$TP/bin" 2>/dev/null | tr ' ' '\n' | grep -m1 '^u:object_r:')
+
+write_wrapper() {
+    f="$1"
+    if [ -e "$f" ] && [ ! -f "$f" ]; then
+        echo "antigravity-link-termux: $f ada tapi bukan file biasa -- dilewati" >&2
+        return 0
+    fi
+    if [ -f "$f" ] && grep -q "$MODDIR/bin/antigravity" "$f" 2>/dev/null; then
+        return 0
+    fi
+    cat > "$f" <<EOF
+#!$TP/bin/sh
+exec su -c '$MODDIR/bin/antigravity "\$@"' -- "\$@"
+EOF
+    chmod 755 "$f"
+    [ "$TUID" != 0 ] && chown "$TUID:$TUID" "$f" 2>/dev/null
+    [ -n "$CTX" ] && chcon "$CTX" "$f" 2>/dev/null
+}
+
+write_wrapper "$TP/bin/antigravity"
+write_wrapper "$TP/bin/agy"

@@ -112,13 +112,10 @@ if [ "$SKIP" = 0 ]; then
     rm -rf "$TMP"; trap - EXIT INT TERM
 fi
 
-# SELinux labels
-chcon -R u:object_r:system_file:s0 "$POOL" 2>/dev/null
 chmod 755 "$POOL"
 
 # Whitelist domains
-if command -v antigravity-whitelist >/dev/null 2>&1; then
-    antigravity-whitelist || true
-fi
+MODDIR=/data/adb/modules/antigravity-cli
+[ -x "$MODDIR/bin/antigravity-whitelist" ] && "$MODDIR/bin/antigravity-whitelist" || true
 
 echo "==> selesai. Coba: antigravity --version"
